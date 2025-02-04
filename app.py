@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from pydantic import BaseModel
 import torch
 import gc  # For clearing memory
@@ -10,6 +10,8 @@ from PIL import Image
 import io
 from diffusers import StableDiffusionPipeline
 from datetime import datetime
+import random
+import string
 
 # Initialize FastAPI App
 app = FastAPI(title="AI Model API", version="3.1", description="Serving DeepSeek-R1 & Janus-Pro-7B with FastAPI")
@@ -36,6 +38,9 @@ JANUS_TEXT2IMAGE_MODEL = "CompVis/stable-diffusion-v1-4"
 
 EC2_PUBLIC_IP = "3.80.102.182"
 
+# Optional API Key
+API_KEY = "1234a"
+
 # Request Schema
 class TextRequest(BaseModel):
     prompt: str
@@ -46,6 +51,17 @@ class TextRequest(BaseModel):
 def clear_gpu_memory():
     torch.cuda.empty_cache()
     gc.collect()
+
+# ✅ Helper function for API key validation
+def validate_api_key(api_key: str = Header(None)):
+    if api_key and api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
+# ✅ Function to generate a unique filename
+def generate_unique_filename():
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=5))  # 5-char random string
+    return f"generated_image_{timestamp}_{random_suffix}.png"
 
 # ✅ Load & Unload DeepSeek-R1
 def process_deepseek_text(request: TextRequest):
@@ -120,6 +136,9 @@ def enhance_prompt_with_deepseek(request: TextRequest):
             f"Enhance this prompt for a high-quality AI-generated art: {request.prompt}. "
             f"Ensure the output is a single, focused image with no duplicates or multiple iterations."
             f"STRICTLY ensure that the output is a single focused and high-quality image. DO NOT output duplicates or multiple iterations."
+            f"Always output a SINGLE image if it is an avatar, ONLY output ONE iteration."
+            f"Generate a SINGLE, high-quality, AI-generated image based on this prompt: {request.prompt}. "
+            f"Do NOT generate multiple iterations. The output must be ONE SINGLE image, NOT variations."
         )
         inputs = tokenizer(enhanced_input, return_tensors="pt").to(device)
         output = model.generate(**inputs, max_length=request.max_length, temperature=request.temperature)
@@ -173,9 +192,8 @@ def process_janus_text2image(request: TextRequest):
         if not os.path.exists(static_dir):
             os.makedirs(static_dir)
 
-        # Generate a unique filename using a timestamp
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        image_filename = f"generated_image_{timestamp}.png"
+        # Generate a unique filename
+        image_filename = generate_unique_filename()
         image_path = os.path.join(static_dir, image_filename)
         image.save(image_path)
 
@@ -192,25 +210,25 @@ def process_janus_text2image(request: TextRequest):
 
 
 # 🚀 API Endpoints
+# 🚀 API Endpoints with Optional API Key
 @app.post("/deepseek/generate-text")
-async def generate_text_deepseek(request: TextRequest):
+async def generate_text_deepseek(request: TextRequest, api_key: str = Header(None)):
+    validate_api_key(api_key)  # ✅ Validate API key (optional)
     return process_deepseek_text(request)
 
 @app.post("/janus/generate-text")
-async def generate_text_janus(request: TextRequest):
+async def generate_text_janus(request: TextRequest, api_key: str = Header(None)):
+    validate_api_key(api_key)  # ✅ Validate API key (optional)
     return process_janus_text(request)
 
-@app.post("/janus/generate-image-caption")
-async def generate_image_caption(file: UploadFile = File(...)):
-    return process_janus_image_caption(file)
-
 @app.post("/janus/generate-image")
-async def generate_image_janus(request: TextRequest):
+async def generate_image_janus(request: TextRequest, api_key: str = Header(None)):
+    validate_api_key(api_key)  # ✅ Validate API key (optional)
     return process_janus_text2image(request)
 
 @app.get("/")
 def health_check():
     return {
         "status": "API is running!",
-        "available_models": ["deepseek-text", "janus-text", "janus-image-captioning", "janus-text-to-image"],
+        "available_models": ["deepseek-text", "janus-text", "janus-text-to-image"],
     }
