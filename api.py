@@ -1256,7 +1256,7 @@ async def balance_stock_suggestions(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 def call_balance_suggestions(user_id):
-    base_url = "http://103.160.106.17:7000"
+    base_url = "http://103.160.106.17:8000"
     url = f"{base_url}/balance_stock_suggestions"
 
     response = requests.get(url, params={"user_id": user_id})
@@ -1659,7 +1659,7 @@ def add_conv_history(token_id, user_query, response):
     if len(CHAT_SESSSION) > 100000:
         CHAT_SESSSION.pop(0)
 
-@app.get("/chatbot-endpoint", tags=["Chatbot"])
+@app.get("/chat", tags=["Chat"])
 def chatbot(user_query: str, token_id: str):
     if token_id not in CHAT_SESSSION:
         CHAT_SESSSION[token_id] = []
